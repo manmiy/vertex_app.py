@@ -30,7 +30,7 @@ def clear_extracted_data():
 # ==========================================
 # 2. パスワード認証
 # ==========================================
-CORRECT_PASSWORD = "7654"
+CORRECT_PASSWORD = "1234"
 
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
