@@ -140,7 +140,7 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
         for r_offset in range(3): # start_row-2, start_row-1, start_rowの3行
             ws[f"{remarks_col_letter}{start_row-2 + r_offset}"].border = thin_border
 
-    # 動的なヘッダーブロック（プロジェクトおよび「その他」）の生成
+    # 動的なヘッダーブロック（プロジェクト）の生成
     header_blocks = [("計", "実労", "K", "L")]
     start_col_idx = 13 # プロジェクトの列はM(13)からスタート
     for code in unique_codes:
@@ -149,11 +149,7 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
         header_blocks.append((code, code_to_name.get(code, ""), col1, col2))
         start_col_idx += 2
     
-    # 「その他」ブロックを追加
-    other_col1 = get_column_letter(start_col_idx)
-    other_col2 = get_column_letter(start_col_idx + 1)
-    header_blocks.append(("その他", "", other_col1, other_col2))
-    start_col_idx += 2 # start_col_idxは「その他」ブロックの次の列を指す
+    # 「その他」ブロックの追加を削除。remarks_col_idxはここで決定される
 
     # 「備考」列のインデックスを定義
     remarks_col_idx = start_col_idx
@@ -198,11 +194,11 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
             ws[f'L{r_idx}'] = f'=IF(K{r_idx}="","",K{r_idx}/7)'
 
             # プロジェクト固有の時間/人工列を決定
-            # unique_codesにない場合、「その他」列へ
-            col_t_idx = 13 + unique_codes.index(entry['code']) * 2 if entry.get('code') in unique_codes else remarks_col_idx - 2
-
-            ws[f'{get_column_letter(col_t_idx)}{r_idx}'] = f'=K{r_idx}'
-            ws[f'{get_column_letter(col_t_idx+1)}{r_idx}'] = f'=L{r_idx}'
+            # unique_codesにない場合は、どのプロジェクト列にも書き込まない（「その他」欄は削除）
+            if entry.get('code') in unique_codes:
+                col_t_idx = 13 + unique_codes.index(entry['code']) * 2
+                ws[f'{get_column_letter(col_t_idx)}{r_idx}'] = f'=K{r_idx}'
+                ws[f'{get_column_letter(col_t_idx+1)}{r_idx}'] = f'=L{r_idx}'
 
             # 「備考」列を含む全ての列に罫線と配置を適用
             for col_idx_loop in range(2, remarks_col_idx + 1):
