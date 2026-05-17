@@ -78,8 +78,8 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
         ("G", "始業"), ("H", "終業"), ("I", "時間"), ("J", "休憩"), ("K", "時間"), ("L", "人工")
     ]
 
-    # write_headers関数にremarks_col_idxを追加
-    def write_headers(ws, start_row, header_blocks, remarks_col_idx):
+    # write_headers関数からremarks_col_idx引数を削除
+    def write_headers(ws, start_row, header_blocks):
         for col, name in headers_left:
             cell = ws[f"{col}{start_row}"]
             cell.value = name
@@ -125,20 +125,7 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal="center", vertical="center", wrapText=True)
         
-        # 「備考」ヘッダーを追加
-        remarks_col_letter = get_column_letter(remarks_col_idx)
-        
-        # 「備考」セルを3行にわたって結合 (start_row-2からstart_rowまで)
-        ws.merge_cells(f"{remarks_col_letter}{start_row-2}:{remarks_col_letter}{start_row}")
-        
-        cell_remarks = ws[f"{remarks_col_letter}{start_row-2}"] # 結合範囲の左上のセルにアクセス
-        cell_remarks.value = "備考"
-        cell_remarks.alignment = Alignment(horizontal="center", vertical="center")
-        cell_remarks.font = Font(size=9, bold=True)
-        
-        # 結合された範囲内の全てのセルに罫線を適用して正しく表示されるようにする
-        for r_offset in range(3): # start_row-2, start_row-1, start_rowの3行
-            ws[f"{remarks_col_letter}{start_row-2 + r_offset}"].border = thin_border
+        # 「備考」ヘッダーの追加ロジックを削除
 
     # 動的なヘッダーブロック（プロジェクト）の生成
     header_blocks = [("計", "実労", "K", "L")]
@@ -149,15 +136,22 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
         header_blocks.append((code, code_to_name.get(code, ""), col1, col2))
         start_col_idx += 2
     
-    # 「その他」ブロックの追加を削除。remarks_col_idxはここで決定される
-
-    # 「備考」列のインデックスを定義
-    remarks_col_idx = start_col_idx
-    remarks_col_letter = get_column_letter(remarks_col_idx)
-
-    # 列幅の設定 (remarks_col_idxが決定された後に動的な列幅を設定)
+    # 「その他」ブロックの追加を復活
+    other_col1 = get_column_letter(start_col_idx)
+    other_col2 = get_column_letter(start_col_idx + 1)
+    header_blocks.append(("その他", "その他", other_col1, other_col2))
+    
+    # データの入る最終列のインデックス (「その他」の人工列)
+    max_data_col_idx = start_col_idx + 1 
+    
+    # 列幅の設定
     widths = {'A':4, 'B':4, 'C':4, 'D':4, 'E':6, 'F':12, 'G':6, 'H':6, 'I':8, 'J':6, 'K':10, 'L':9}
-    widths[remarks_col_letter] = 20 # 新しい「備考」列の幅
+    # プロジェクトとその他列の幅を設定 (M列から max_data_col_idx まで)
+    for i in range(13, max_data_col_idx + 1):
+        if i % 2 == 1: # 時間 (奇数インデックス)
+            widths[get_column_letter(i)] = 10
+        else: # 人工 (偶数インデックス)
+            widths[get_column_letter(i)] = 9
     
     # 列幅を適用
     for col, w in widths.items(): ws.column_dimensions[col].width = w
@@ -166,8 +160,8 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
     reg_data = [d for d in data_list if d.get('category') == "日勤"]
     hol_data = [d for d in data_list if d.get('category') != "日勤"]
 
-    # fill_rows関数にremarks_col_idxを追加
-    def fill_rows(ws, data_rows, start_row_idx, total_label="計", is_continuous=False, remarks_col_idx=None):
+    # fill_rows関数からremarks_col_idx引数を削除し、max_data_col_idxをクロージャで参照する
+    def fill_rows(ws, data_rows, start_row_idx, total_label="計", is_continuous=False):
         r_idx = start_row_idx
         grouped = {}
         for entry in data_rows:
@@ -194,22 +188,26 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
             ws[f'L{r_idx}'] = f'=IF(K{r_idx}="","",K{r_idx}/7)'
 
             # プロジェクト固有の時間/人工列を決定
-            # unique_codesにない場合は、どのプロジェクト列にも書き込まない（「その他」欄は削除）
+            # unique_codesにない場合は、「その他」欄に書き込む
             if entry.get('code') in unique_codes:
                 col_t_idx = 13 + unique_codes.index(entry['code']) * 2
                 ws[f'{get_column_letter(col_t_idx)}{r_idx}'] = f'=K{r_idx}'
                 ws[f'{get_column_letter(col_t_idx+1)}{r_idx}'] = f'=L{r_idx}'
+            else: # 「その他」欄に書き込む
+                col_t_idx = 13 + len(unique_codes) * 2 
+                ws[f'{get_column_letter(col_t_idx)}{r_idx}'] = f'=K{r_idx}'
+                ws[f'{get_column_letter(col_t_idx+1)}{r_idx}'] = f'=L{r_idx}'
 
-            # 「備考」列を含む全ての列に罫線と配置を適用
-            for col_idx_loop in range(2, remarks_col_idx + 1):
+            # 罫線と配置を適用 (max_data_col_idxまで)
+            for col_idx_loop in range(2, max_data_col_idx + 1):
                 cell = ws[f'{get_column_letter(col_idx_loop)}{r_idx}']
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 if col_idx_loop in [7, 8]: cell.number_format = '[h]:mm'
                 elif col_idx_loop in [9, 10, 11]: cell.number_format = '0.00'
                 elif col_idx_loop == 12: cell.number_format = '0.0000'
-                # 「備考」列には数値書式を適用しない
-                elif col_idx_loop >= 13 and col_idx_loop < remarks_col_idx:
+                # プロジェクト/その他列には適切な数値書式を適用
+                elif col_idx_loop >= 13:
                     cell.number_format = '0.00' if (col_idx_loop % 2 != 0) else '0.0000'
 
         if is_continuous:
@@ -241,8 +239,8 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
                     ws[f'D{r_idx}'] = weekdays_jp[curr.weekday()]
                     ws[f'E{r_idx}'] = "×" 
                     ws[f'F{r_idx}'] = ""  
-                    # 「備考」列を含む全ての列に罫線を適用
-                    for col_idx_loop in range(7, remarks_col_idx + 1):
+                    # 全ての列に罫線を適用 (max_data_col_idxまで)
+                    for col_idx_loop in range(7, max_data_col_idx + 1):
                         cell = ws[f'{get_column_letter(col_idx_loop)}{r_idx}']
                         cell.value = "" if col_idx_loop > 8 else cell.value 
                         cell.border = thin_border
@@ -270,8 +268,8 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
             ws[f"E{r_idx}"] = f'=COUNTIF(E{start_row_idx}:E{r_idx-1}, "〇")'
             ws[f"E{r_idx}"].alignment = Alignment(horizontal="center", vertical="center")
             
-            # 合計を計算する列 (「備考」列の手前まで)
-            for col_idx_loop in range(9, remarks_col_idx):
+            # 合計を計算する列 (max_data_col_idxまで)
+            for col_idx_loop in range(9, max_data_col_idx + 1):
                 col_let = get_column_letter(col_idx_loop)
                 ws[f"{col_let}{r_idx}"] = f"=SUM({col_let}{start_row_idx}:{col_let}{r_idx-1})"
                 if col_idx_loop == 12 or (col_idx_loop >= 14 and col_idx_loop % 2 == 0):
@@ -279,16 +277,16 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
                 else:
                     ws[f"{col_let}{r_idx}"].number_format = '0.00'
             
-            # 合計行の罫線とフォントを「備考」列を含む全ての列に適用
-            for col_idx_loop in range(2, remarks_col_idx + 1):
+            # 合計行の罫線とフォントを全ての列に適用 (max_data_col_idxまで)
+            for col_idx_loop in range(2, max_data_col_idx + 1):
                 cell = ws[f'{get_column_letter(col_idx_loop)}{r_idx}']
                 cell.border = thin_border
                 cell.font = Font(bold=True)
             r_idx += 1
         return r_idx
 
-    write_headers(ws, 4, header_blocks, remarks_col_idx) # remarks_col_idxを渡す
-    next_row = fill_rows(ws, reg_data, 5, total_label="日勤計", is_continuous=True, remarks_col_idx=remarks_col_idx) # remarks_col_idxを渡す
+    write_headers(ws, 4, header_blocks) # remarks_col_idxを削除
+    next_row = fill_rows(ws, reg_data, 5, total_label="日勤計", is_continuous=True) # remarks_col_idxを削除
     
     if hol_data:
         next_row += 3
@@ -297,8 +295,8 @@ def create_filled_excel(df_extracted, sheet1_name="人工集計", sheet2_name="�
         cell_a.value = "残業・休日出勤"
         cell_a.alignment = Alignment(horizontal="center", vertical="center", textRotation=255)
         cell_a.border = thin_border
-        write_headers(ws, next_row, header_blocks, remarks_col_idx) # remarks_col_idxを渡す
-        next_row = fill_rows(ws, hol_data, next_row + 1, total_label="残業計", is_continuous=False, remarks_col_idx=remarks_col_idx) # remarks_col_idxを渡す
+        write_headers(ws, next_row, header_blocks) # remarks_col_idxを削除
+        next_row = fill_rows(ws, hol_data, next_row + 1, total_label="残業計", is_continuous=False) # remarks_col_idxを削除
 
     sheet1_row_mapping = {}
     for d in data_list:
